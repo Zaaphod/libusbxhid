@@ -135,7 +135,7 @@ begin
       repeat
         {interrupt reading   - for joystick or wiimote, or touchscreens, etc.
         NOTE: program execution is blocked until data is read from device!}
-        hidReportData[reportIdx].dataLen:=libusbhid_interrupt_read(device_context,$81{endpoint},{out}hidReportData[reportIdx].hid_data,128{report length, varies by device}, {timeout=}50);
+        hidReportData[reportIdx].dataLen:=libusbhid_interrupt_read(device_context,$81{endpoint},{out}hidReportData[reportIdx].hid_data,128{report length, varies by device}, {timeout=}1000);
         If hidReportData[reportIdx].dataLen > 0 Then
             Begin
                If 
@@ -145,10 +145,12 @@ begin
                PrintAndCompareReport(reportIdx,3);   //- Show Only Changed data only when report changed
                                                        Then
                Begin
-                  If hidReportData[reportIdx].hid_data[0]=$4 then
-                     Writeln('HB04 Packet Detected')
-                  Else
+                  If hidReportData[reportIdx].hid_data[0]<>$4 then
                      Writeln('HB04 Packet Not Detected');
+                  Else
+                     Begin
+//                        Writeln('HB04 Packet Detected');
+                     End;
                   Button_1   := hidReportData[reportIdx].hid_data[2];
                   Button_2   := hidReportData[reportIdx].hid_data[3];
                   Wheel_Mode := hidReportData[reportIdx].hid_data[4];
