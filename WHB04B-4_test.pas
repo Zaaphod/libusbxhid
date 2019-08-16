@@ -19,7 +19,7 @@ uses
   {$ENDIF}{$ENDIF}
 
   keyboard,
-  
+
   sysutils,
 
   libusbhid,
@@ -45,8 +45,55 @@ Const
   Button_Step              = $0F ;
   Button_Macro10           = $10 ;
 
+  Axis_Sel_Off             = $06 ;
+  Axis_Sel_X               = $11 ;
+  Axis_Sel_Y               = $12 ;
+  Axis_Sel_Z               = $13 ;
+  Axis_Sel_A               = $14 ;
+
+  Wheel_Mode_2             = $0D ;
+  Wheel_Mode_5             = $0E ;
+  Wheel_Mode_10            = $0F ;
+  Wheel_Mode_30            = $10 ;
+  Wheel_Mode_60            = $1A ;
+  Wheel_Mode_100           = $1B ;
+  Wheel_Mode_Lead          = $1C ;
+
 
    // button look up table
+    Button_Raw_LookUp : Array [$00..$FF] of String = (
+       {00}'B00_None'              ,
+       '','','','','','','','','','','','','','','','',
+       '','','','','','','','','','','','','','','','',
+       '','','','','','','','','','','','','','','','',
+       '','','','','','','','','','','','','','','','',
+       '','','','','','','','','','','','','','','','',
+       '','','','','','','','','','','','','','','','',
+       '','','','','','','','','','','','','','','','',
+       '','','','','','','','','','','','','','','','',
+       '','','','','','','','','','','','','','','','',
+       '','','','','','','','','','','','','','','','',
+       '','','','','','','','','','','','','','','','',
+       '','','','','','','','','','','','','','','','',
+       '','','','','','','','','','','','','','','','',
+       '','','','','','','','','','','','','','','','',
+       '','','','','','','','','','','','','','','',
+       {FF}'B16_Macro10'           ,
+       {FE}'B15_Step'              ,
+       {FD}'B14_Continuous'        ,
+       {FC}'B13_Macro9_ProbeZ'     ,
+       {FB}'B12_Fn'                ,
+       {FA}'B11_Macro8_SOnOff'     ,
+       {F0}'B10_Macro7_WHome'      ,
+       {F9}'B09_Macro6_SafeZ'      ,
+       {F8}'B08_Macro5_MHome'      ,
+       {F7}'B07_Macro4_SpindleNeg' ,
+       {F6}'B06_Macro3_SpindlePos' ,
+       {F5}'B05_Macro2_FeedNeg'    ,
+       {F4}'B04_Macro1_FeedPos'    ,
+       {F3}'B03_Start_Pause'       ,
+       {F2}'B02_Stop'              ,
+       {F1}'B01_Reset'             );
     Button_LookUp : Array [0..16] of String = (
        { 0}'None'             ,
        { 1}'Reset'            ,
@@ -83,6 +130,22 @@ Const
        {14}'Continuous'       ,
        {15}'Step'             ,
        {16}'Macro10'          );
+    Axis_Sel_Lookup : Array [$06..$14] of String = (
+       {06} 'Axis_Sel_Off ',
+            '','','','','','','','','','',
+       {11} 'Axis_Sel_X   ',
+       {12} 'Axis_Sel_Y   ',
+       {13} 'Axis_Sel_Z   ',
+       {14} 'Axis_Sel_A   ');
+    Wheel_Mode_Lookup : Array [$0D..$1C] of String = (
+       {0D} 'Wheel_Mode_2   ',
+       {0E} 'Wheel_Mode_5   ',
+       {0F} 'Wheel_Mode_10  ',
+       {10} 'Wheel_Mode_30  ',
+       '','','','','','','','','',
+       {1A} 'Wheel_Mode_60  ',
+       {1B} 'Wheel_Mode_100 ',
+       {1C} 'Wheel_Mode_Lead');
 
    lcd_data : Array [0..41] of Byte = (
         $FE, $FD, 1,
@@ -101,9 +164,10 @@ Const
         0, 0, 0, 0, 0   // padding
     );
 Var
-  Button_1,Button_2,Wheel_Mode,xor_day:Byte;
+  Button_Raw,Button_1,Button_2,Axis_Sel,Wheel_Mode,xor_day:Byte;
   Wheel:Integer;
-  
+  HB04_Packet:Boolean;
+
 Function TwosCompliment(InData,numberofbits:Byte):Integer;
    Var
       OutData:Integer;
@@ -138,26 +202,32 @@ begin
         hidReportData[reportIdx].dataLen:=libusbhid_interrupt_read(device_context,$81{endpoint},{out}hidReportData[reportIdx].hid_data,128{report length, varies by device}, {timeout=}1000);
         If hidReportData[reportIdx].dataLen > 0 Then
             Begin
-               If 
-               //PrintAndCompareReport(reportIdx,0);   //- Show all data of all reports
-               //PrintAndCompareReport(reportIdx,1);   //- Show Only Changed data of all reports
-               //PrintAndCompareReport(reportIdx,2);   //- Show all data only when report changed
-               PrintAndCompareReport(reportIdx,3);   //- Show Only Changed data only when report changed
+               If
+               //PrintAndCompareReport(reportIdx,0)   //- Show all data of all reports
+               //PrintAndCompareReport(reportIdx,1)   //- Show Only Changed data of all reports
+               PrintAndCompareReport(reportIdx,2)   //- Show all data only when report changed
+               //PrintAndCompareReport(reportIdx,3)   //- Show Only Changed data only when report changed
                                                        Then
                Begin
                   If hidReportData[reportIdx].hid_data[0]<>$4 then
-                     Writeln('HB04 Packet Not Detected');
+                     Begin
+                        Writeln('HB04 Packet Not Detected');
+                        HB04_Packet:=False;
+                     end
                   Else
                      Begin
+                        HB04_Packet:=True;
 //                        Writeln('HB04 Packet Detected');
                      End;
                   Button_1   := hidReportData[reportIdx].hid_data[2];
                   Button_2   := hidReportData[reportIdx].hid_data[3];
                   Wheel_Mode := hidReportData[reportIdx].hid_data[4];
+                  Axis_Sel   := hidReportData[reportIdx].hid_data[5];
                   Wheel      := Twoscompliment(hidReportData[reportIdx].hid_data[6],8);
-                  xor_day    := hidReportData[reportIdx].hid_data[5];
-                  Writeln('Button_1 = $'+Inttohex(Button_1,2)+'  Button_2 = $'+Inttohex(Button_2,2)+'  Wheel_Mode = $'+Inttohex(Wheel_Mode,2)+'  Wheel = $'+Inttohex(Wheel,2)+'  xor_day = $'+Inttohex(xor_day,2) );
-                  Writeln(Button_LookUp[Button_1],'    ',Fn_LookUp[Button_2]);
+                  Button_Raw := hidReportData[reportIdx].hid_data[7];
+                  //Writeln('HB04 = ',HB04_Packet,'  Button_1 = $'+Inttohex(Button_1,2)+'  Button_2 = $'+Inttohex(Button_2,2)+'  Axis_Sel = $'+Inttohex(Axis_Sel,2)+'  Axis_Sel = $'+Inttohex(Axis_Sel,2)+
+                  //                     '  Wheel_Mode = $'+Inttohex(Wheel_Mode,2)+'  Wheel = $'+Inttohex(Wheel,2)+'  xor_day = $'+Inttohex(xor_day,2) );
+                  Writeln(Button_LookUp[Button_1],'    ',Fn_LookUp[Button_2],'    ',Button_Raw_LookUp[Button_Raw],'    ',Axis_Sel_LookUp[Axis_Sel],'    ',Wheel_Mode_LookUp[Wheel_Mode]);
                End;
             End;
       until KeyPressed;
