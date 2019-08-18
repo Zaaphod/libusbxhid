@@ -96,7 +96,7 @@ Const
        {F3}'B03_Start_Pause'       ,
        {F2}'B02_Stop'              ,
        {F1}'B01_Reset'             );
-       
+
     Button_LookUp : Array [0..16] of String = (
        { 0}'None'             ,
        { 1}'Reset'            ,
@@ -115,7 +115,7 @@ Const
        {14}'Continuous'       ,
        {15}'Step'             ,
        {16}'Macro10'          );
-       
+
     Fn_LookUp : Array [0..16] of String = (
        { 0}'None'             ,
        { 1}'Reset'            ,
@@ -134,16 +134,20 @@ Const
        {14}'Continuous'       ,
        {15}'Step'             ,
        {16}'Macro10'          );
-       
-    Axis_Sel_Lookup : Array [$06..$14] of String = (
+
+    Axis_Sel_Lookup : Array [$00..$14] of String = (
+       {00} 'Power Off',              //only for wireless version
+       '','','','','',
        {06} 'Axis_Sel_Off',
             '','','','','','','','','','',
        {11} 'Axis_Sel_X',
        {12} 'Axis_Sel_Y',
        {13} 'Axis_Sel_Z',
        {14} 'Axis_Sel_A');
-       
-    Wheel_Mode_Lookup : Array [$0D..$9B] of String = (
+
+    Wheel_Mode_Lookup : Array [$00..$9B] of String = (
+       {00} 'Power Off',              //only for wireless version
+       '','','','','','','','','','','','',
        {0D} 'Wheel_Mode_2',
        {0E} 'Wheel_Mode_5',
        {0F} 'Wheel_Mode_10',
@@ -161,7 +165,7 @@ Const
        '','','','','','','','','','','','','','','','',
        '','','','','','','','','','','','','','',
        {9B} 'Wheel_Mode_Lead');       //only for wireless version
-       
+
     Wheel_Distance_Multiplier : Array [$0D..$9B] of Real = (
        {0D} 0.001,
        {0E} 0.01,
@@ -180,7 +184,7 @@ Const
        0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
        0,0,0,0,0,0,0,0,0,0,0,0,0,0,
        {9B} 1);       //only for wireless version
-       
+
     Wheel_Feedrate_Percentage : Array [$0D..$9B] of Real = (
        {0D} 2,
        {0E} 5,
@@ -221,6 +225,8 @@ Var
   Wheel_Relative_Movement,Wheel_Absolute_Positon:Integer;
   X_Pos,Y_Pos,Z_Pos,A_Pos:Real;
   HB04_Packet:Boolean;
+  Thread_Id:Dword;
+  i:Longint;
 
 Function TwosCompliment(InData,numberofbits:Byte):Integer;
    Var
@@ -232,6 +238,80 @@ Function TwosCompliment(InData,numberofbits:Byte):Integer;
        TwosCompliment:=OutData;                               //return positive value as is
        //Writeln('twos - in: '+Inttohex(InData,2)+'  Out: '+Inttohex(OutData,2));
    End;
+
+Function ReadUSBPort(p : pointer) : ptrint;
+Var
+   Saved_Data : Array [0..7] of Byte;
+Begin
+   Repeat
+      hidReportData[reportIdx].dataLen:=libusbhid_interrupt_read(device_context,$81{endpoint},{out}hidReportData[reportIdx].hid_data,64{report length, varies by device}, {timeout=}3000);
+      //write('.');
+      If hidReportData[reportIdx].dataLen > 0 Then
+         Begin
+            //If PrintAndCompareReport(reportIdx,0) Then   //- Show all data of all reports
+            //If PrintAndCompareReport(reportIdx,1) Then   //- Show Only Changed data of all reports
+            //If PrintAndCompareReport(reportIdx,2) Then   //- Show all data only when report changed
+            //If PrintAndCompareReport(reportIdx,3) Then   //- Show Only Changed data only when report changed
+            Begin
+               If hidReportData[reportIdx].hid_data[0]<>$4 then  //Always $04 for an HB04 device
+                  Begin
+                     Write('HB04 Packet Not Detected: ');
+                     PrintAndCompareReport(reportIdx,0);
+                     HB04_Packet:=False;
+                     readln;
+                  end
+               Else
+                  Begin
+                     HB04_Packet:=True;
+                     // Writeln('HB04 Packet Detected');
+                     If hidReportData[reportIdx].hid_data[6]<>0 Then
+                        Begin
+                           Wheel_Relative_Movement := Twoscompliment(hidReportData[reportIdx].hid_data[6],8);  // Number of wheel ticks since last read
+                           Wheel_Absolute_Positon+=Wheel_Relative_Movement;
+                           If Wheel_Relative_Movement<>0 Then
+                              Begin
+                                 If Axis_Sel = Axis_Sel_X Then
+                                    X_Pos += Wheel_Relative_Movement*Wheel_Distance_Multiplier[Wheel_Mode];
+                                 If Axis_Sel = Axis_Sel_Y Then
+                                    Y_Pos += Wheel_Relative_Movement*Wheel_Distance_Multiplier[Wheel_Mode];
+                                 If Axis_Sel = Axis_Sel_Z Then
+                                    Z_Pos += Wheel_Relative_Movement*Wheel_Distance_Multiplier[Wheel_Mode];
+                                 If Axis_Sel = Axis_Sel_A Then
+                                    A_Pos += Wheel_Relative_Movement*Wheel_Distance_Multiplier[Wheel_Mode];
+                              End;
+                        End
+                     Else
+                        Begin
+                           // hidReportData[reportIdx].hid_data[1];   // Always $00 on Wired version--- Wireless is doing something but I don't know what
+                           If hidReportData[reportIdx].hid_data[2] <> Saved_Data[2] Then   // Buttons without Fn held down
+                              Begin
+                                 If hidReportData[reportIdx].hid_data[2] <> 0 Then
+                                    Button_1   := hidReportData[reportIdx].hid_data[2];
+                                 Saved_Data[2] := hidReportData[reportIdx].hid_data[2];
+                              End;
+                           If hidReportData[reportIdx].hid_data[3] <> Saved_Data[3] Then   // Buttons with Fn held down (byte 2 will be Fn still)
+                              Begin
+                                 If hidReportData[reportIdx].hid_data[3] <> 0 Then
+                                    Button_2   := hidReportData[reportIdx].hid_data[3];
+                                 Saved_Data[3] := hidReportData[reportIdx].hid_data[3];
+                              End;
+                           If hidReportData[reportIdx].hid_data[4] <> Saved_Data[4] Then   // Wheel multiplier or Feedrate override
+                              Begin
+                                 Wheel_Mode    := hidReportData[reportIdx].hid_data[4];
+                                 Saved_Data[4] := hidReportData[reportIdx].hid_data[4];
+                              End;
+                           If hidReportData[reportIdx].hid_data[5] <> Saved_Data[5] Then   // Axis Selection for Wheel or turn wheel off
+                              Begin
+                                 Axis_Sel      := hidReportData[reportIdx].hid_data[5];
+                                 Saved_Data[5] := hidReportData[reportIdx].hid_data[5];
+                              End;
+                           // Button_Raw := hidReportData[reportIdx].hid_data[7];   //Only Wired version is this--- Wireless is something different
+                        End;
+                  End;
+            End;
+         End;
+    Until X_Pos>500;
+End;
 
 begin
   keyboard.InitKeyboard();
@@ -251,61 +331,21 @@ begin
       Y_Pos:=0;
       Z_Pos:=0;
       A_Pos:=0;
+      i:=0;
       Wheel_Absolute_Positon:=0;
       Wheel_Relative_Movement:=0;
       Show_LibUSB_Messages:=False;
       reportIdx:=0; //devices often use one endpoint (commonly $81) to output data reports
-      {read report until keypressed, then closes the device}
+      thread_id:=BeginThread(@ReadUSBPort,pointer(i));
       repeat
-        {interrupt reading   - for joystick or wiimote, or touchscreens, etc.
-        NOTE: program execution is blocked until data is read from device!}
-        hidReportData[reportIdx].dataLen:=libusbhid_interrupt_read(device_context,$81{endpoint},{out}hidReportData[reportIdx].hid_data,128{report length, varies by device}, {timeout=}3000);
-        If hidReportData[reportIdx].dataLen > 0 Then
-            Begin
-               If
-               //PrintAndCompareReport(reportIdx,0)   //- Show all data of all reports
-               //PrintAndCompareReport(reportIdx,1)   //- Show Only Changed data of all reports
-               PrintAndCompareReport(reportIdx,2)   //- Show all data only when report changed
-               //PrintAndCompareReport(reportIdx,3)   //- Show Only Changed data only when report changed
-                                                       Then
-               Begin
-                  If hidReportData[reportIdx].hid_data[0]<>$4 then  //Always $04 for an HB04 device
-                     Begin
-                        Writeln('HB04 Packet Not Detected');
-                        HB04_Packet:=False;
-                     end
-                  Else
-                     Begin
-                        HB04_Packet:=True;
-//                        Writeln('HB04 Packet Detected');
-                     End;
-                  //            hidReportData[reportIdx].hid_data[1];   // Always $00 on Wired version--- Wireless is doing something but I don't know what
-                  Button_1   := hidReportData[reportIdx].hid_data[2];   // Buttons without Fn held down
-                  Button_2   := hidReportData[reportIdx].hid_data[3];   // Buttons with Fn held down (byte 2 will be Fn still)
-                  Wheel_Mode := hidReportData[reportIdx].hid_data[4];   // Wheel multiplier or Feedrate override
-                  Axis_Sel   := hidReportData[reportIdx].hid_data[5];   // Axis Selection for Wheel or turn wheel off
-                  Wheel_Relative_Movement := Twoscompliment(hidReportData[reportIdx].hid_data[6],8);  // Number of wheel ticks since last read
-                  Wheel_Absolute_Positon+=Wheel_Relative_Movement;
-                  // Button_Raw := hidReportData[reportIdx].hid_data[7];   //Only Wired version is this--- Wireless is something different
-                  If Wheel_Relative_Movement<>0 Then
-                     Begin
-                        If Axis_Sel = Axis_Sel_X Then
-                           X_Pos += Wheel_Relative_Movement*Wheel_Distance_Multiplier[Wheel_Mode];
-                        If Axis_Sel = Axis_Sel_Y Then
-                           Y_Pos += Wheel_Relative_Movement*Wheel_Distance_Multiplier[Wheel_Mode];
-                        If Axis_Sel = Axis_Sel_Z Then
-                           Z_Pos += Wheel_Relative_Movement*Wheel_Distance_Multiplier[Wheel_Mode];
-                        If Axis_Sel = Axis_Sel_A Then
-                           A_Pos += Wheel_Relative_Movement*Wheel_Distance_Multiplier[Wheel_Mode];
-                     End;
+               Sleep(5000);
                   //Writeln('HB04 = ',HB04_Packet,'  Button_1 = $'+Inttohex(Button_1,2)+'  Button_2 = $'+Inttohex(Button_2,2)+'  Axis_Sel = $'+Inttohex(Axis_Sel,2)+'  Axis_Sel = $'+Inttohex(Axis_Sel,2)+
                   //                     '  Wheel_Mode = $'+Inttohex(Wheel_Mode,2)+'  Wheel = $'+Inttohex(Wheel,2)+'  xor_day = $'+Inttohex(xor_day,2) );
-                  Writeln(Button_LookUp[Button_1],'    ',Fn_LookUp[Button_2],'    ',Button_Raw_LookUp[Button_Raw],'    ',Axis_Sel_LookUp[Axis_Sel],'    ',Wheel_Mode_LookUp[Wheel_Mode]
-                  //        ,'    ',Wheel_Relative_Movement,'    ',Wheel_Absolute_Positon
+                 //if X_Pos<100 then
+                 Writeln(Button_LookUp[Button_1],'    ',Fn_LookUp[Button_2],'    ',Button_Raw_LookUp[Button_Raw],'    ',Axis_Sel_LookUp[Axis_Sel],'    ',Wheel_Mode_LookUp[Wheel_Mode]
+                          ,'    ',Wheel_Relative_Movement,'    ',Wheel_Absolute_Positon
                           ,'    X',X_Pos:0:5,'    Y',Y_Pos:0:5,'    Z',Z_Pos:0:5,'    A',A_Pos:0:5
                           );
-               End;
-            End;
       until KeyPressed;
       libusbhid_close_device(device_context);
     end
