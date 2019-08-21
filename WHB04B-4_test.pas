@@ -204,28 +204,37 @@ Const
        0,0,0,0,0,0,0,0,0,0,0,0,0,0,
        {9B} 100);       //only for wireless version
 
-   lcd_data : Array [0..41] of Byte = (  //This is for HB04 not for WHB04B-4
-        $FE, $FD, 1,
-        1, 2, 3, 4,  // X WC
-        0, 0, 0, 0,  // Y WC
-        0, 0, 0, 0,  // Z WC
-        0, 0, 0, 0,  // X MC
-        0, 0, 0, 0,  // Y MC
-        0, 0, 0, 0,  // Z MC
-        0, 0,        // F ovr
-        0, 0,        // S ovr
-        0, 0,        // F
-        0, 0,        // S
-        $01,         // step mul
-        0,           // inch/mm
-        0, 0, 0, 0, 0   // padding
-    );
 Var
-  Button_Raw,Button_1,Button_2,Axis_Sel,Wheel_Mode,xor_day:Byte;
-  Wheel_Relative_Movement,Wheel_Absolute_Positon:Integer;
+  WHB04_Packet1,
+  WHB04_Packet2,
+  WHB04_Packet3:Array [0..7] of byte;
+
+  Writing_LCD_Data,
+  LCD_Data_Ready,
+  LCD_Ready1,
+  LCD_Ready2,
+  LCD_Ready3:Boolean;
+
+  LCD_Mode,
+  Button_Raw,
+  Button_1,
+  Button_2,
+  Axis_Sel,
+  Wheel_Mode,
+  Wireless_Random,
+  Wireless_Checksum,
+  xor_day : Byte;
+
+  Wheel_Relative_Movement,Wheel_Absolute_Positon : Integer;
+
   X_Pos,Y_Pos,Z_Pos,A_Pos:Real;
+
+  X_IntW,Y_IntW,Z_IntW,A_IntW,
+  X_DecW,Y_DecW,Z_DEcW,A_DEcW,
+  SpindleW,FeedW                :Word;
+
   HB04_Packet:Boolean;
-  Thread_Id:Dword;
+  LoopCount,Thread_Id,TimeoutCount:Dword;
   i:Longint;
 
 Function TwosCompliment(InData,numberofbits:Byte):Integer;
@@ -243,11 +252,21 @@ Function ReadUSBPort(p : pointer) : ptrint;
 Var
    Saved_Data : Array [0..7] of Byte;
 Begin
+   Loopcount:=0;
+   TimeoutCount:=0;
+   Axis_Sel := $0F;
+   Wheel_Mode := $F0;
    Repeat
-      hidReportData[reportIdx].dataLen:=libusbhid_interrupt_read(device_context,$81{endpoint},{out}hidReportData[reportIdx].hid_data,64{report length, varies by device}, {timeout=}3000);
-      //write('.');
-      If hidReportData[reportIdx].dataLen > 0 Then
+      hidReportData[reportIdx].dataLen:=libusbhid_interrupt_read(device_context,$81{endpoint},{out}hidReportData[reportIdx].hid_data,64{report length, varies by device}, {timeout=}50);
+      if hidReportData[reportIdx].datalen <= 0 then
          Begin
+            Loopcount:=0;
+            Inc(TimeoutCount);
+         End
+      Else
+         Begin
+            Timeoutcount:=0;
+            Inc(Loopcount);
             //If PrintAndCompareReport(reportIdx,0) Then   //- Show all data of all reports
             //If PrintAndCompareReport(reportIdx,1) Then   //- Show Only Changed data of all reports
             //If PrintAndCompareReport(reportIdx,2) Then   //- Show all data only when report changed
@@ -282,7 +301,8 @@ Begin
                         End
                      Else
                         Begin
-                           // hidReportData[reportIdx].hid_data[1];   // Always $00 on Wired version--- Wireless is doing something but I don't know what
+                        //                        hidReportData[reportIdx].hid_data[0];    // Report ID
+                        // Wireless_Random     := hidReportData[reportIdx].hid_data[1];    // Always $00 on Wired version--- Wireless generates a random number used for the Checksum
                            If hidReportData[reportIdx].hid_data[2] <> Saved_Data[2] Then   // Buttons without Fn held down
                               Begin
                                  If hidReportData[reportIdx].hid_data[2] <> 0 Then
@@ -305,51 +325,108 @@ Begin
                                  Axis_Sel      := hidReportData[reportIdx].hid_data[5];
                                  Saved_Data[5] := hidReportData[reportIdx].hid_data[5];
                               End;
-                           // Button_Raw := hidReportData[reportIdx].hid_data[7];   //Only Wired version is this--- Wireless is something different
+                        // Button_Raw          := hidReportData[reportIdx].hid_data[7];    //Only Wired version
+                        // Wireless_Checksum   := hidReportData[reportIdx].hid_data[7];    //Only Wireless version
                         End;
                   End;
             End;
          End;
-    Until X_Pos>500;
+         If Timeoutcount>10 then
+            Timeoutcount:=0;
+         If LCD_Data_Ready Then
+            Begin
+               Writing_LCD_Data:=True;
+               If (TimeoutCount=4) {OR LCD_Ready1} Then
+                  Begin
+                     LCD_Ready1:=False;
+                     libusbhid_set_report(device_context, HID_REPORT_TYPE_FEATURE, $6 , 8 , WhB04_Packet1 );
+                  End;
+               If (TimeoutCount=6) {Or LCD_Ready2} Then
+                  Begin
+                     LCD_Ready2:=False;
+                     libusbhid_set_report(device_context, HID_REPORT_TYPE_FEATURE, $6 , 8 , WhB04_Packet2 );
+                  End;
+               If (TimeoutCount=8) {OR LCD_Ready3} Then
+                  Begin
+                     Timeoutcount:=0;
+                     LCD_Ready3:=False;
+                     libusbhid_set_report(device_context, HID_REPORT_TYPE_FEATURE, $6 , 8 , WhB04_Packet3 );
+                     LCD_Data_Ready:=False;
+                     Writing_LCD_Data:=False;
+                  End;
+            End;
+   Until Axis_Sel = Wheel_Mode; //Power Off
+   Writeln('Power Off');
 End;
 
 begin
-  keyboard.InitKeyboard();
-
-  if libusbhid_open_device(
-        // $046D, $C216 {xbox gamepad }
-        // $0000, $0001 {barcode scanner}
-        // $24C0, $0003 {weather station}
-        // $1784, $0001 {}
-        // $056a, $00de {Wacom Bamboo}
-        // $04e7, $0050  {elo touch screen}
-        // $051d, $0002 {APC UPS}
-        $10CE, $EB93  {WHB04B-4 CNC Handwheel}
-         ,{instance=}1,device_context) then
-    begin
-      X_Pos:=0;
-      Y_Pos:=0;
-      Z_Pos:=0;
-      A_Pos:=0;
-      i:=0;
-      Wheel_Absolute_Positon:=0;
-      Wheel_Relative_Movement:=0;
-      Show_LibUSB_Messages:=False;
-      reportIdx:=0; //devices often use one endpoint (commonly $81) to output data reports
-      thread_id:=BeginThread(@ReadUSBPort,pointer(i));
-      repeat
-               Sleep(5000);
-                  //Writeln('HB04 = ',HB04_Packet,'  Button_1 = $'+Inttohex(Button_1,2)+'  Button_2 = $'+Inttohex(Button_2,2)+'  Axis_Sel = $'+Inttohex(Axis_Sel,2)+'  Axis_Sel = $'+Inttohex(Axis_Sel,2)+
-                  //                     '  Wheel_Mode = $'+Inttohex(Wheel_Mode,2)+'  Wheel = $'+Inttohex(Wheel,2)+'  xor_day = $'+Inttohex(xor_day,2) );
-                 //if X_Pos<100 then
-                 Writeln(Button_LookUp[Button_1],'    ',Fn_LookUp[Button_2],'    ',Button_Raw_LookUp[Button_Raw],'    ',Axis_Sel_LookUp[Axis_Sel],'    ',Wheel_Mode_LookUp[Wheel_Mode]
-                          ,'    ',Wheel_Relative_Movement,'    ',Wheel_Absolute_Positon
-                          ,'    X',X_Pos:0:5,'    Y',Y_Pos:0:5,'    Z',Z_Pos:0:5,'    A',A_Pos:0:5
-                          );
-      until KeyPressed;
-      libusbhid_close_device(device_context);
-    end
-  else WriteLn('unable to open device');
-  keyboard.DoneKeyboard();
-
+   keyboard.InitKeyboard();
+   LCD_Data_Ready:=False;
+   Writing_LCD_Data:=False;
+   If libusbhid_open_device($10CE, $EB93  {WHB04B-4 CNC Handwheel},{instance=}1,device_context) then
+      begin
+         X_Pos:=0;
+         Y_Pos:=0;
+         Z_Pos:=0;
+         A_Pos:=0;
+         i:=0;
+         Wheel_Absolute_Positon:=0;
+         Wheel_Relative_Movement:=0;
+         Show_LibUSB_Messages:=False;
+         reportIdx:=0; //devices often use one endpoint (commonly $81) to output data reports
+         thread_id:=BeginThread(@ReadUSBPort,pointer(i));
+         repeat
+            If Not(Writing_LCD_Data) then
+               Begin
+                  X_IntW:=Trunc(Abs(X_Pos));
+                  If X_Pos<0 Then
+                     X_IntW := X_IntW Or $80;
+                  X_DecW :=Trunc((X_Pos-X_IntW)*10000);
+                  Y_IntW :=Trunc(Abs(Y_Pos));
+                  If Y_Pos<0 Then
+                     Y_IntW := Y_IntW Or $80;
+                  Y_DecW :=Trunc((Y_Pos-Y_IntW)*10000);
+                  Z_IntW :=Trunc(Abs(Z_Pos));
+                  If X_Pos<0 Then
+                     Z_IntW := Z_IntW Or $80;
+                  Z_DecW :=Trunc((Z_Pos-Z_IntW)*10000);
+                  WHB04_Packet1[0]    := $06;                        //Packet Always starts with $06
+                  WHB04_Packet1[1]    := $FE;                        //The beginning of the first packet is always $FEFD
+                  WHB04_Packet1[2]    := $FD;
+                  WHB04_Packet1[3]    := $FF;                        // Seed used for checksum
+                  WHB04_Packet1[4]    := LCD_Mode;                   // $0 "CONT xx%", $1 "STEP: xx", $2 "MPG xx%", $3 "xxx%", $40 RESET , $80 Work Coordinates
+                  WHB04_Packet1[5]    := X_IntW AND $00FF;           //Low  Byte of Interger part of X number
+                  WHB04_Packet1[6]    := (X_IntW AND $FF00) SHR 8;   //High Byte of Interger part of X number
+                  WHB04_Packet1[7]    := X_DecW AND $00FF;           //Low  Byte of Decimal part of X number
+                  WHB04_Packet2[0]    := $06;
+                  WHB04_Packet2[1]    := (X_DecW AND $FF00) SHR 8;   //High Byte of Decimal part of X number
+                  WHB04_Packet2[2]    := Y_IntW AND $00FF;           //Low  Byte of Interger part of Y number
+                  WHB04_Packet2[3]    := (Y_IntW AND $FF00) SHR 8;   //High Byte of Interger part of Y number
+                  WHB04_Packet2[4]    := Y_DecW AND $00FF;           //Low  Byte of Decimal part of Y number
+                  WHB04_Packet2[5]    := (Y_DecW AND $FF00) SHR 8;   //High Byte of Decimal part of Y number
+                  WHB04_Packet2[6]    := Z_IntW AND $00FF;           //Low  Byte of Interger part of Z number
+                  WHB04_Packet2[7]    := (Z_IntW AND $FF00) SHR 8;   //High Byte of Interger part of Z number
+                  WHB04_Packet3[0]    := $06;
+                  WHB04_Packet3[1]    := Z_DecW AND $00FF;           //Low  Byte of Decimal part of Z number
+                  WHB04_Packet3[2]    := (Z_DecW AND $FF00) SHR 8;   //High Byte of Decimal part of Z number
+                  WHB04_Packet3[3]    := FeedW AND $00FF;            //Low  Byte of Decimal part of FeedRate (not working yet, don't know how to turn on Feedrate display)
+                  WHB04_Packet3[4]    := (FeedW AND $FF00) SHR 8;    //High Byte of Decimal part of FeedRate (not working yet, don't know how to turn on Feedrate display)
+                  WHB04_Packet3[5]    := SpindleW AND $00FF;         //Low  Byte of Decimal part of Spindle Speed (not working yet, don't know how to turn on Spindle Speed display)
+                  WHB04_Packet3[6]    := (SpindleW AND $FF00) SHR 8; //High Byte of Decimal part of Spindle Speed (not working yet, don't know how to turn on Spindle Speed display)
+                  WHB04_Packet3[7]    := $0;
+                  Sleep(250);
+                  LCD_Data_Ready:=True;
+               End;
+            //Sleep(300);
+            //   libusbhid_set_report(device_context, HID_REPORT_TYPE_FEATURE, $6 , 8 , WhB04_Packet1 );
+            //Sleep(300);
+            //   libusbhid_set_report(device_context, HID_REPORT_TYPE_FEATURE, $6 , 8 , WhB04_Packet2 );
+            //Sleep(300);
+            //   libusbhid_set_report(device_context, HID_REPORT_TYPE_FEATURE, $6 , 8 , WhB04_Packet3 );
+         until KeyPressed;
+         libusbhid_close_device(device_context);
+      end
+   else
+      WriteLn('unable to open device');
+   keyboard.DoneKeyboard();
 end.
