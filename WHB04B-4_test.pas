@@ -228,6 +228,7 @@ Var
   Wheel_Relative_Movement,Wheel_Absolute_Positon : Integer;
 
   X_Pos,Y_Pos,Z_Pos,A_Pos:Real;
+  X_Pos_Tmp,Y_Pos_Tmp,Z_Pos_Tmp,A_Pos_Tmp:Real;
 
   X_IntW,Y_IntW,Z_IntW,A_IntW,
   X_DecW,Y_DecW,Z_DEcW,A_DEcW,
@@ -251,6 +252,18 @@ Function TwosCompliment(InData,numberofbits:Byte):Integer;
 Function ReadUSBPort(p : pointer) : ptrint;
 Var
    Saved_Data : Array [0..7] of Byte;
+
+Function ReadThreadTwosCompliment(InData,numberofbits:Byte):Integer;
+   Var
+      OutData:Integer;
+   Begin
+       OutData:=InData;
+       if (OutData And (1 SHL (numberofbits - 1))) <> 0 Then  // if sign bit is set e.g., 8bit: 128-255
+          OutData := OutData - (1 SHL numberofbits);          // compute negative value
+       ReadThreadTwosCompliment:=OutData;                               //return positive value as is
+       //Writeln('twos - in: '+Inttohex(InData,2)+'  Out: '+Inttohex(OutData,2));
+   End;
+
 Begin
    Loopcount:=0;
    TimeoutCount:=0;
@@ -285,7 +298,7 @@ Begin
                      // Writeln('HB04 Packet Detected');
                      If hidReportData[reportIdx].hid_data[6]<>0 Then
                         Begin
-                           Wheel_Relative_Movement := Twoscompliment(hidReportData[reportIdx].hid_data[6],8);  // Number of wheel ticks since last read
+                           Wheel_Relative_Movement := ReadThreadTwoscompliment(hidReportData[reportIdx].hid_data[6],8);  // Number of wheel ticks since last read
                            Wheel_Absolute_Positon+=Wheel_Relative_Movement;
                            If Wheel_Relative_Movement<>0 Then
                               Begin
@@ -331,30 +344,6 @@ Begin
                   End;
             End;
          End;
-         If Timeoutcount>10 then
-            Timeoutcount:=0;
-         If LCD_Data_Ready Then
-            Begin
-               Writing_LCD_Data:=True;
-               If (TimeoutCount=4) {OR LCD_Ready1} Then
-                  Begin
-                     LCD_Ready1:=False;
-                     libusbhid_set_report(device_context, HID_REPORT_TYPE_FEATURE, $6 , 8 , WhB04_Packet1 );
-                  End;
-               If (TimeoutCount=6) {Or LCD_Ready2} Then
-                  Begin
-                     LCD_Ready2:=False;
-                     libusbhid_set_report(device_context, HID_REPORT_TYPE_FEATURE, $6 , 8 , WhB04_Packet2 );
-                  End;
-               If (TimeoutCount=8) {OR LCD_Ready3} Then
-                  Begin
-                     Timeoutcount:=0;
-                     LCD_Ready3:=False;
-                     libusbhid_set_report(device_context, HID_REPORT_TYPE_FEATURE, $6 , 8 , WhB04_Packet3 );
-                     LCD_Data_Ready:=False;
-                     Writing_LCD_Data:=False;
-                  End;
-            End;
    Until Axis_Sel = Wheel_Mode; //Power Off
    Writeln('Power Off');
 End;
@@ -363,6 +352,8 @@ begin
    keyboard.InitKeyboard();
    LCD_Data_Ready:=False;
    Writing_LCD_Data:=False;
+   FeedW:=800;
+   SpindleW:=24000;
    If libusbhid_open_device($10CE, $EB93  {WHB04B-4 CNC Handwheel},{instance=}1,device_context) then
       begin
          X_Pos:=0;
@@ -376,53 +367,61 @@ begin
          reportIdx:=0; //devices often use one endpoint (commonly $81) to output data reports
          thread_id:=BeginThread(@ReadUSBPort,pointer(i));
          repeat
-            If Not(Writing_LCD_Data) then
-               Begin
-                  X_IntW:=Trunc(Abs(X_Pos));
-                  If X_Pos<0 Then
-                     X_IntW := X_IntW Or $80;
-                  X_DecW :=Trunc((X_Pos-X_IntW)*10000);
-                  Y_IntW :=Trunc(Abs(Y_Pos));
-                  If Y_Pos<0 Then
-                     Y_IntW := Y_IntW Or $80;
-                  Y_DecW :=Trunc((Y_Pos-Y_IntW)*10000);
-                  Z_IntW :=Trunc(Abs(Z_Pos));
-                  If X_Pos<0 Then
-                     Z_IntW := Z_IntW Or $80;
-                  Z_DecW :=Trunc((Z_Pos-Z_IntW)*10000);
-                  WHB04_Packet1[0]    := $06;                        //Packet Always starts with $06
-                  WHB04_Packet1[1]    := $FE;                        //The beginning of the first packet is always $FEFD
-                  WHB04_Packet1[2]    := $FD;
-                  WHB04_Packet1[3]    := $FF;                        // Seed used for checksum
-                  WHB04_Packet1[4]    := LCD_Mode;                   // $0 "CONT xx%", $1 "STEP: xx", $2 "MPG xx%", $3 "xxx%", $40 RESET , $80 Work Coordinates
-                  WHB04_Packet1[5]    := X_IntW AND $00FF;           //Low  Byte of Interger part of X number
-                  WHB04_Packet1[6]    := (X_IntW AND $FF00) SHR 8;   //High Byte of Interger part of X number
-                  WHB04_Packet1[7]    := X_DecW AND $00FF;           //Low  Byte of Decimal part of X number
-                  WHB04_Packet2[0]    := $06;
-                  WHB04_Packet2[1]    := (X_DecW AND $FF00) SHR 8;   //High Byte of Decimal part of X number
-                  WHB04_Packet2[2]    := Y_IntW AND $00FF;           //Low  Byte of Interger part of Y number
-                  WHB04_Packet2[3]    := (Y_IntW AND $FF00) SHR 8;   //High Byte of Interger part of Y number
-                  WHB04_Packet2[4]    := Y_DecW AND $00FF;           //Low  Byte of Decimal part of Y number
-                  WHB04_Packet2[5]    := (Y_DecW AND $FF00) SHR 8;   //High Byte of Decimal part of Y number
-                  WHB04_Packet2[6]    := Z_IntW AND $00FF;           //Low  Byte of Interger part of Z number
-                  WHB04_Packet2[7]    := (Z_IntW AND $FF00) SHR 8;   //High Byte of Interger part of Z number
-                  WHB04_Packet3[0]    := $06;
-                  WHB04_Packet3[1]    := Z_DecW AND $00FF;           //Low  Byte of Decimal part of Z number
-                  WHB04_Packet3[2]    := (Z_DecW AND $FF00) SHR 8;   //High Byte of Decimal part of Z number
-                  WHB04_Packet3[3]    := FeedW AND $00FF;            //Low  Byte of Decimal part of FeedRate (not working yet, don't know how to turn on Feedrate display)
-                  WHB04_Packet3[4]    := (FeedW AND $FF00) SHR 8;    //High Byte of Decimal part of FeedRate (not working yet, don't know how to turn on Feedrate display)
-                  WHB04_Packet3[5]    := SpindleW AND $00FF;         //Low  Byte of Decimal part of Spindle Speed (not working yet, don't know how to turn on Spindle Speed display)
-                  WHB04_Packet3[6]    := (SpindleW AND $FF00) SHR 8; //High Byte of Decimal part of Spindle Speed (not working yet, don't know how to turn on Spindle Speed display)
-                  WHB04_Packet3[7]    := $0;
-                  Sleep(250);
-                  LCD_Data_Ready:=True;
-               End;
-            //Sleep(300);
-            //   libusbhid_set_report(device_context, HID_REPORT_TYPE_FEATURE, $6 , 8 , WhB04_Packet1 );
-            //Sleep(300);
-            //   libusbhid_set_report(device_context, HID_REPORT_TYPE_FEATURE, $6 , 8 , WhB04_Packet2 );
-            //Sleep(300);
-            //   libusbhid_set_report(device_context, HID_REPORT_TYPE_FEATURE, $6 , 8 , WhB04_Packet3 );
+            X_Pos_Tmp:=X_Pos;  //Copy data so it can't change in the middle of processing
+            Y_Pos_Tmp:=Y_Pos;
+            Z_Pos_Tmp:=Z_Pos;
+            
+            X_IntW:=Trunc(Abs(X_Pos_Tmp));
+            If X_Pos_Tmp<0 Then                  //set sign bit if negative
+               X_IntW := X_IntW Or $80;
+            X_DecW :=Trunc((X_Pos_Tmp-X_IntW)*1000); // get 3 decimal places
+            
+            Y_IntW :=Trunc(Abs(Y_Pos_Tmp));
+            If Y_Pos_Tmp<0 Then                  //set sign bit if negative
+               Y_IntW := Y_IntW Or $80;
+            Y_DecW :=Trunc((Y_Pos_Tmp-Y_IntW)*1000); // get 3 decimal places
+            
+            Z_IntW :=Trunc(Abs(Z_Pos_Tmp));
+            If Z_Pos_Tmp<0 Then                  //set sign bit if negative
+               Z_IntW := Z_IntW Or $80;
+            Z_DecW :=Trunc((Z_PosT-Z_IntW)*1000); // get 3 decimal places
+            
+            A_IntW :=Trunc(Abs(A_Pos_Tmp));
+            If A_Pos_Tmp<0 Then                  //set sign bit if negative
+               A_IntW := A_IntW Or $80;
+            A_DecW :=Trunc((A_PosT-Z_IntW)*1000); // get 3 decimal places
+            
+            WHB04_Packet1[0]    := $06;                        //Packet Always starts with $06
+            WHB04_Packet1[1]    := $FE;                        //The beginning of the first packet is always $FEFD
+            WHB04_Packet1[2]    := $FD;
+            WHB04_Packet1[3]    := $FF;                        // Seed used for checksum
+            WHB04_Packet1[4]    := LCD_Mode;                   // $0 "CONT xx%", $1 "STEP: xx", $2 "MPG xx%", $3 "xxx%", $40 RESET , $80 Work Coordinates
+            WHB04_Packet1[5]    := X_IntW AND $00FF;           //Low  Byte of Interger part of X number
+            WHB04_Packet1[6]    := (X_IntW AND $FF00) SHR 8;   //High Byte of Interger part of X number
+            WHB04_Packet1[7]    := X_DecW AND $00FF;           //Low  Byte of Decimal part of X number
+            WHB04_Packet2[0]    := $06;
+            WHB04_Packet2[1]    := (X_DecW AND $FF00) SHR 8;   //High Byte of Decimal part of X number
+            WHB04_Packet2[2]    := Y_IntW AND $00FF;           //Low  Byte of Interger part of Y number
+            WHB04_Packet2[3]    := (Y_IntW AND $FF00) SHR 8;   //High Byte of Interger part of Y number
+            WHB04_Packet2[4]    := Y_DecW AND $00FF;           //Low  Byte of Decimal part of Y number
+            WHB04_Packet2[5]    := (Y_DecW AND $FF00) SHR 8;   //High Byte of Decimal part of Y number
+            WHB04_Packet2[6]    := Z_IntW AND $00FF;           //Low  Byte of Interger part of Z number
+            WHB04_Packet2[7]    := (Z_IntW AND $FF00) SHR 8;   //High Byte of Interger part of Z number
+            WHB04_Packet3[0]    := $06;
+            WHB04_Packet3[1]    := Z_DecW AND $00FF;           //Low  Byte of Decimal part of Z number
+            WHB04_Packet3[2]    := (Z_DecW AND $FF00) SHR 8;   //High Byte of Decimal part of Z number
+            WHB04_Packet3[3]    := FeedW AND $00FF;            //Low  Byte of Decimal part of FeedRate
+            WHB04_Packet3[4]    := (FeedW AND $FF00) SHR 8;    //High Byte of Decimal part of FeedRate
+            WHB04_Packet3[5]    := SpindleW AND $00FF;         //Low  Byte of Decimal part of Spindle Speed
+            WHB04_Packet3[6]    := (SpindleW AND $FF00) SHR 8; //High Byte of Decimal part of Spindle Speed
+            WHB04_Packet3[7]    := $0;
+            Sleep(100);
+               libusbhid_set_report(device_context, HID_REPORT_TYPE_FEATURE, $6 , 8 , WhB04_Packet1 );
+            Sleep(100);
+               libusbhid_set_report(device_context, HID_REPORT_TYPE_FEATURE, $6 , 8 , WhB04_Packet2 );
+            Sleep(100);
+               libusbhid_set_report(device_context, HID_REPORT_TYPE_FEATURE, $6 , 8 , WhB04_Packet3 );
+            Sleep(1000);
          until KeyPressed;
          libusbhid_close_device(device_context);
       end
