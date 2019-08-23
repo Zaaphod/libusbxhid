@@ -363,34 +363,33 @@ begin
          i:=0;
          Wheel_Absolute_Positon:=0;
          Wheel_Relative_Movement:=0;
-         Show_LibUSB_Messages:=False;
          reportIdx:=0; //devices often use one endpoint (commonly $81) to output data reports
          thread_id:=BeginThread(@ReadUSBPort,pointer(i));
          repeat
             X_Pos_Tmp:=X_Pos;  //Copy data so it can't change in the middle of processing
             Y_Pos_Tmp:=Y_Pos;
             Z_Pos_Tmp:=Z_Pos;
-            
+
             X_IntW:=Trunc(Abs(X_Pos_Tmp));
             If X_Pos_Tmp<0 Then                  //set sign bit if negative
                X_IntW := X_IntW Or $80;
             X_DecW :=Trunc((X_Pos_Tmp-X_IntW)*1000); // get 3 decimal places
-            
+
             Y_IntW :=Trunc(Abs(Y_Pos_Tmp));
             If Y_Pos_Tmp<0 Then                  //set sign bit if negative
                Y_IntW := Y_IntW Or $80;
             Y_DecW :=Trunc((Y_Pos_Tmp-Y_IntW)*1000); // get 3 decimal places
-            
+
             Z_IntW :=Trunc(Abs(Z_Pos_Tmp));
             If Z_Pos_Tmp<0 Then                  //set sign bit if negative
                Z_IntW := Z_IntW Or $80;
             Z_DecW :=Trunc((Z_Pos_Tmp-Z_IntW)*1000); // get 3 decimal places
-            
+
             A_IntW :=Trunc(Abs(A_Pos_Tmp));
             If A_Pos_Tmp<0 Then                  //set sign bit if negative
                A_IntW := A_IntW Or $80;
             A_DecW :=Trunc((A_Pos_Tmp-A_IntW)*1000); // get 3 decimal places
-            
+
             WHB04_Packet1[0]    := $06;                        //Packet Always starts with $06
             WHB04_Packet1[1]    := $FE;                        //The beginning of the first packet is always $FEFD
             WHB04_Packet1[2]    := $FD;
