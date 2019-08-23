@@ -40,7 +40,7 @@ interface
 
 {$MACRO ON}
 
-{$define DEBUG_MSG} {enable/disable this define for debug messages on/off}
+//{$define DEBUG_MSG} {enable/disable this define for debug messages on/off}
 
 uses
 {$ifdef DEBUG_MSG}

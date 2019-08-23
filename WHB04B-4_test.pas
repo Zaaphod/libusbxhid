@@ -412,11 +412,11 @@ Begin
             WHB04_Packet3[5]    := SpindleW AND $00FF;         //Low  Byte of Decimal part of Spindle Speed
             WHB04_Packet3[6]    := (SpindleW AND $FF00) SHR 8; //High Byte of Decimal part of Spindle Speed
             WHB04_Packet3[7]    := $0;
-            
+
             libusbhid_set_report(device_context, HID_REPORT_TYPE_FEATURE, $6 , 8 , WhB04_Packet1 );
             libusbhid_set_report(device_context, HID_REPORT_TYPE_FEATURE, $6 , 8 , WhB04_Packet2 );
             libusbhid_set_report(device_context, HID_REPORT_TYPE_FEATURE, $6 , 8 , WhB04_Packet3 );
-            
+
             Sleep(1000);
          until KeyPressed;
          libusbhid_close_device(device_context);
@@ -433,7 +433,7 @@ begin
    SpindleW:=24000;
    Writeln('Looking for WHB04B-4');
    Repeat
-      Sleep(500)
+      Sleep(500);
       Write('.');
       If libusbhid_detect_device($10CE, $EB93  {WHB04B-4 CNC Handwheel},{instance=}1,device_context) then
          Begin
