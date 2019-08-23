@@ -270,7 +270,7 @@ Begin
    Axis_Sel := $0F;
    Wheel_Mode := $F0;
    Repeat
-      hidReportData[reportIdx].dataLen:=libusbhid_interrupt_read(device_context,$81{endpoint},{out}hidReportData[reportIdx].hid_data,64{report length, varies by device}, {timeout=}50);
+      hidReportData[reportIdx].dataLen:=libusbhid_interrupt_read(device_context,$81{endpoint},{out}hidReportData[reportIdx].hid_data,64{report length, varies by device}, {timeout=}0);
       if hidReportData[reportIdx].datalen <= 0 then
          Begin
             Loopcount:=0;
@@ -384,12 +384,12 @@ begin
             Z_IntW :=Trunc(Abs(Z_Pos_Tmp));
             If Z_Pos_Tmp<0 Then                  //set sign bit if negative
                Z_IntW := Z_IntW Or $80;
-            Z_DecW :=Trunc((Z_PosT-Z_IntW)*1000); // get 3 decimal places
+            Z_DecW :=Trunc((Z_Pos_Tmp-Z_IntW)*1000); // get 3 decimal places
             
             A_IntW :=Trunc(Abs(A_Pos_Tmp));
             If A_Pos_Tmp<0 Then                  //set sign bit if negative
                A_IntW := A_IntW Or $80;
-            A_DecW :=Trunc((A_PosT-Z_IntW)*1000); // get 3 decimal places
+            A_DecW :=Trunc((A_Pos_Tmp-A_IntW)*1000); // get 3 decimal places
             
             WHB04_Packet1[0]    := $06;                        //Packet Always starts with $06
             WHB04_Packet1[1]    := $FE;                        //The beginning of the first packet is always $FEFD
@@ -415,13 +415,13 @@ begin
             WHB04_Packet3[5]    := SpindleW AND $00FF;         //Low  Byte of Decimal part of Spindle Speed
             WHB04_Packet3[6]    := (SpindleW AND $FF00) SHR 8; //High Byte of Decimal part of Spindle Speed
             WHB04_Packet3[7]    := $0;
-            Sleep(100);
+            Sleep(300);
                libusbhid_set_report(device_context, HID_REPORT_TYPE_FEATURE, $6 , 8 , WhB04_Packet1 );
-            Sleep(100);
+            Sleep(300);
                libusbhid_set_report(device_context, HID_REPORT_TYPE_FEATURE, $6 , 8 , WhB04_Packet2 );
-            Sleep(100);
+            Sleep(300);
                libusbhid_set_report(device_context, HID_REPORT_TYPE_FEATURE, $6 , 8 , WhB04_Packet3 );
-            Sleep(1000);
+            //Sleep(1000);
          until KeyPressed;
          libusbhid_close_device(device_context);
       end
