@@ -326,16 +326,16 @@ begin
 
       if usb_device_handle<>nil then
       begin
-{kernel driver attaching problem; device may open but still be busy - this attempts to go around that -
-I have never been able to fully test so - beware}
-{$ifdef DEBUG_MSG}DBG_MSG('device attempting go clear halt on ep $81');{whatever.. seems to fail everytime anyway}       {$endif}
-
-        res:=libusb_clear_halt(usb_device_handle, $81);
-
-{$ifdef DEBUG_MSG}
-        if res=LIBUSB_SUCCESS then DBG_MSG('clear halt successful')
-        else DBG_MSG(Format('clear halt failed (it''s ok, endpoint was NOT busy); error result: %d',[res]));//I've never seen this succeeding :(; eh whatever
-{$endif}
+// {kernel driver attaching problem; device may open but still be busy - this attempts to go around that -
+// I have never been able to fully test so - beware}
+// {$ifdef DEBUG_MSG}DBG_MSG('device attempting go clear halt on ep $81');{whatever.. seems to fail everytime anyway}       {$endif}
+//
+//         res:=libusb_clear_halt(usb_device_handle, $81);
+//
+// {$ifdef DEBUG_MSG}
+//         if res=LIBUSB_SUCCESS then DBG_MSG('clear halt successful')
+//         else DBG_MSG(Format('clear halt failed (it''s ok, endpoint was NOT busy); error result: %d',[res]));//I've never seen this succeeding :(; eh whatever
+// {$endif}
 
 (*        if libusb_auto_detach_kernel_driver(usb_device_handle,1{enable autodetach})=0 then DBG_MSG('Setting autodetach kernel driver')
         else*)
