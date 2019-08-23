@@ -228,6 +228,8 @@ Var
   Wheel_Relative_Movement,Wheel_Absolute_Positon : Integer;
 
   X_Pos,Y_Pos,Z_Pos,A_Pos:Real;
+  X_Pos_Tmp,Y_Pos_Tmp,Z_Pos_Tmp,A_Pos_Tmp:Real;
+  X_Pos_Abs,Y_Pos_Abs,Z_Pos_Abs,A_Pos_Abs:Real;
 
   X_IntW,Y_IntW,Z_IntW,A_IntW,
   X_DecW,Y_DecW,Z_DEcW,A_DEcW,
@@ -331,28 +333,17 @@ Begin
                   End;
             End;
          End;
-         If Timeoutcount>10 then
-            Timeoutcount:=0;
          If LCD_Data_Ready Then
             Begin
                Writing_LCD_Data:=True;
-               If (TimeoutCount=4) {OR LCD_Ready1} Then
+               If (TimeoutCount>=4) Then
                   Begin
-                     LCD_Ready1:=False;
                      libusbhid_set_report(device_context, HID_REPORT_TYPE_FEATURE, $6 , 8 , WhB04_Packet1 );
-                  End;
-               If (TimeoutCount=6) {Or LCD_Ready2} Then
-                  Begin
-                     LCD_Ready2:=False;
                      libusbhid_set_report(device_context, HID_REPORT_TYPE_FEATURE, $6 , 8 , WhB04_Packet2 );
-                  End;
-               If (TimeoutCount=8) {OR LCD_Ready3} Then
-                  Begin
-                     Timeoutcount:=0;
-                     LCD_Ready3:=False;
                      libusbhid_set_report(device_context, HID_REPORT_TYPE_FEATURE, $6 , 8 , WhB04_Packet3 );
                      LCD_Data_Ready:=False;
                      Writing_LCD_Data:=False;
+                     Timeoutcount:=0;
                   End;
             End;
    Until Axis_Sel = Wheel_Mode; //Power Off
@@ -377,18 +368,31 @@ begin
          repeat
             If Not(Writing_LCD_Data) then
                Begin
-                  X_IntW:=Trunc(Abs(X_Pos));
-                  If X_Pos<0 Then
-                     X_IntW := X_IntW Or $80;
-                  X_DecW :=Trunc((X_Pos-X_IntW)*10000);
-                  Y_IntW :=Trunc(Abs(Y_Pos));
-                  If Y_Pos<0 Then
-                     Y_IntW := Y_IntW Or $80;
-                  Y_DecW :=Trunc((Y_Pos-Y_IntW)*10000);
-                  Z_IntW :=Trunc(Abs(Z_Pos));
-                  If X_Pos<0 Then
-                     Z_IntW := Z_IntW Or $80;
-                  Z_DecW :=Trunc((Z_Pos-Z_IntW)*10000);
+                  X_Pos_Tmp:=X_Pos;  //Copy data so it can't change in the middle of processing
+                  Y_Pos_Tmp:=Y_Pos;  //Copy data so it can't change in the middle of processing
+                  Z_Pos_Tmp:=Z_Pos;  //Copy data so it can't change in the middle of processing
+                  A_Pos_Tmp:=A_Pos;  //Copy data so it can't change in the middle of processing
+
+                  X_Pos_Abs:=Abs(Round(X_Pos_Tmp*10000)/10000);  //Get absolute value with floating point weirdness cut off
+                  Y_Pos_Abs:=Abs(Round(Y_Pos_Tmp*10000)/10000);  //Get absolute value with floating point weirdness cut off
+                  Z_Pos_Abs:=Abs(Round(Z_Pos_Tmp*10000)/10000);  //Get absolute value with floating point weirdness cut off
+                  A_Pos_Abs:=Abs(Round(A_Pos_Tmp*10000)/10000);  //Get absolute value with floating point weirdness cut off
+
+                  X_IntW:=Trunc(X_Pos_Abs);  //Get integer part
+                  Y_IntW:=Trunc(Y_Pos_Abs);  //Get integer part
+                  Z_IntW:=Trunc(Z_Pos_Abs);  //Get integer part
+                  A_IntW:=Trunc(A_Pos_Abs);  //Get integer part
+
+                  X_DecW :=Round((X_Pos_Abs-X_IntW)*10000);  //Get 4 decimal digits as an integer
+                  Y_DecW :=Round((Y_Pos_Abs-Y_IntW)*10000);  //Get 4 decimal digits as an integer
+                  Z_DecW :=Round((Z_Pos_Abs-Z_IntW)*10000);  //Get 4 decimal digits as an integer
+                  A_DecW :=Round((A_Pos_Abs-A_IntW)*10000);  //Get 4 decimal digits as an integer
+
+                  If Round(X_Pos_Tmp*10000)<0 Then X_DecW := X_DecW Or $8000;  //Set sign bit if negative
+                  If Round(Y_Pos_Tmp*10000)<0 Then Y_DecW := Y_DecW Or $8000;  //Set sign bit if negative
+                  If Round(Z_Pos_Tmp*10000)<0 Then Z_DecW := Z_DecW Or $8000;  //Set sign bit if negative
+                  If Round(A_Pos_Tmp*10000)<0 Then A_DecW := A_DecW Or $8000;  //Set sign bit if negative
+
                   WHB04_Packet1[0]    := $06;                        //Packet Always starts with $06
                   WHB04_Packet1[1]    := $FE;                        //The beginning of the first packet is always $FEFD
                   WHB04_Packet1[2]    := $FD;
