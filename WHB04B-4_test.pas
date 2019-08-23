@@ -10,7 +10,7 @@ updated
 {$mode objfpc}{$H+}
 
 uses
-  heaptrc,{to hunt for memory leaks}
+//  heaptrc,{to hunt for memory leaks}
 
   {$IFDEF UNIX}
   {$DEFINE UseCThreads}
@@ -349,12 +349,8 @@ Begin
    Writeln('Power Off');
 End;
 
-begin
-   keyboard.InitKeyboard();
-   LCD_Data_Ready:=False;
-   Writing_LCD_Data:=False;
-   FeedW:=800;
-   SpindleW:=24000;
+Procedure Use_MPG_Device;
+Begin
    If libusbhid_open_device($10CE, $EB93  {WHB04B-4 CNC Handwheel},{instance=}1,device_context) then
       begin
          X_Pos:=0;
@@ -427,5 +423,25 @@ begin
       end
    else
       WriteLn('unable to open device');
+End;
+
+begin
+   keyboard.InitKeyboard();
+   LCD_Data_Ready:=False;
+   Writing_LCD_Data:=False;
+   FeedW:=800;
+   SpindleW:=24000;
+   Writeln('Looking for WHB04B-4');
+   Repeat
+      Sleep(500)
+      Write('.');
+      If libusbhid_detect_device($10CE, $EB93  {WHB04B-4 CNC Handwheel},{instance=}1,device_context) then
+         Begin
+            Writeln;
+            Writeln('Found @ $10CE, $EB93');
+            Use_MPG_Device;
+         End;
+   Until Keypressed;
+
    keyboard.DoneKeyboard();
 end.
