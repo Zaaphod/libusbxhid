@@ -229,6 +229,7 @@ Var
 
   X_Pos,Y_Pos,Z_Pos,A_Pos:Real;
   X_Pos_Tmp,Y_Pos_Tmp,Z_Pos_Tmp,A_Pos_Tmp:Real;
+  X_Pos_Abs,Y_Pos_Abs,Z_Pos_Abs,A_Pos_Abs:Real;
 
   X_IntW,Y_IntW,Z_IntW,A_IntW,
   X_DecW,Y_DecW,Z_DEcW,A_DEcW,
@@ -367,28 +368,29 @@ begin
          thread_id:=BeginThread(@ReadUSBPort,pointer(i));
          repeat
             X_Pos_Tmp:=X_Pos;  //Copy data so it can't change in the middle of processing
-            Y_Pos_Tmp:=Y_Pos;
-            Z_Pos_Tmp:=Z_Pos;
+            Y_Pos_Tmp:=Y_Pos;  //Copy data so it can't change in the middle of processing
+            Z_Pos_Tmp:=Z_Pos;  //Copy data so it can't change in the middle of processing
+            A_Pos_Tmp:=A_Pos;  //Copy data so it can't change in the middle of processing
 
-            X_IntW:=Trunc(Abs(X_Pos_Tmp));
-            If X_Pos_Tmp<0 Then                  //set sign bit if negative
-               X_IntW := X_IntW Or $80;
-            X_DecW :=Trunc((X_Pos_Tmp-X_IntW)*1000); // get 3 decimal places
+            X_Pos_Abs:=Abs(Round(X_Pos_Tmp*10000)/10000);  //Get absolute value with floating point weirdness cut off
+            Y_Pos_Abs:=Abs(Round(Y_Pos_Tmp*10000)/10000);  //Get absolute value with floating point weirdness cut off
+            Z_Pos_Abs:=Abs(Round(Z_Pos_Tmp*10000)/10000);  //Get absolute value with floating point weirdness cut off
+            A_Pos_Abs:=Abs(Round(A_Pos_Tmp*10000)/10000);  //Get absolute value with floating point weirdness cut off
 
-            Y_IntW :=Trunc(Abs(Y_Pos_Tmp));
-            If Y_Pos_Tmp<0 Then                  //set sign bit if negative
-               Y_IntW := Y_IntW Or $80;
-            Y_DecW :=Trunc((Y_Pos_Tmp-Y_IntW)*1000); // get 3 decimal places
+            X_IntW:=Trunc(X_Pos_Abs);  //Get integer part
+            Y_IntW:=Trunc(Y_Pos_Abs);  //Get integer part
+            Z_IntW:=Trunc(Z_Pos_Abs);  //Get integer part
+            A_IntW:=Trunc(A_Pos_Abs);  //Get integer part
 
-            Z_IntW :=Trunc(Abs(Z_Pos_Tmp));
-            If Z_Pos_Tmp<0 Then                  //set sign bit if negative
-               Z_IntW := Z_IntW Or $80;
-            Z_DecW :=Trunc((Z_Pos_Tmp-Z_IntW)*1000); // get 3 decimal places
+            X_DecW :=Round((X_Pos_Abs-X_IntW)*10000);  //Get 4 decimal digits as an integer
+            Y_DecW :=Round((Y_Pos_Abs-Y_IntW)*10000);  //Get 4 decimal digits as an integer
+            Z_DecW :=Round((Z_Pos_Abs-Z_IntW)*10000);  //Get 4 decimal digits as an integer
+            A_DecW :=Round((A_Pos_Abs-A_IntW)*10000);  //Get 4 decimal digits as an integer
 
-            A_IntW :=Trunc(Abs(A_Pos_Tmp));
-            If A_Pos_Tmp<0 Then                  //set sign bit if negative
-               A_IntW := A_IntW Or $80;
-            A_DecW :=Trunc((A_Pos_Tmp-A_IntW)*1000); // get 3 decimal places
+            If Round(X_Pos_Tmp*10000)<0 Then X_DecW := X_DecW Or $8000;  //Set sign bit if negative
+            If Round(Y_Pos_Tmp*10000)<0 Then Y_DecW := Y_DecW Or $8000;  //Set sign bit if negative
+            If Round(Z_Pos_Tmp*10000)<0 Then Z_DecW := Z_DecW Or $8000;  //Set sign bit if negative
+            If Round(A_Pos_Tmp*10000)<0 Then A_DecW := A_DecW Or $8000;  //Set sign bit if negative
 
             WHB04_Packet1[0]    := $06;                        //Packet Always starts with $06
             WHB04_Packet1[1]    := $FE;                        //The beginning of the first packet is always $FEFD
@@ -414,13 +416,12 @@ begin
             WHB04_Packet3[5]    := SpindleW AND $00FF;         //Low  Byte of Decimal part of Spindle Speed
             WHB04_Packet3[6]    := (SpindleW AND $FF00) SHR 8; //High Byte of Decimal part of Spindle Speed
             WHB04_Packet3[7]    := $0;
-            Sleep(300);
-               libusbhid_set_report(device_context, HID_REPORT_TYPE_FEATURE, $6 , 8 , WhB04_Packet1 );
-            Sleep(300);
-               libusbhid_set_report(device_context, HID_REPORT_TYPE_FEATURE, $6 , 8 , WhB04_Packet2 );
-            Sleep(300);
-               libusbhid_set_report(device_context, HID_REPORT_TYPE_FEATURE, $6 , 8 , WhB04_Packet3 );
-            //Sleep(1000);
+            
+            libusbhid_set_report(device_context, HID_REPORT_TYPE_FEATURE, $6 , 8 , WhB04_Packet1 );
+            libusbhid_set_report(device_context, HID_REPORT_TYPE_FEATURE, $6 , 8 , WhB04_Packet2 );
+            libusbhid_set_report(device_context, HID_REPORT_TYPE_FEATURE, $6 , 8 , WhB04_Packet3 );
+            
+            Sleep(1000);
          until KeyPressed;
          libusbhid_close_device(device_context);
       end
