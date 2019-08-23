@@ -372,7 +372,6 @@ begin
          i:=0;
          Wheel_Absolute_Positon:=0;
          Wheel_Relative_Movement:=0;
-         Show_LibUSB_Messages:=False;
          reportIdx:=0; //devices often use one endpoint (commonly $81) to output data reports
          thread_id:=BeginThread(@ReadUSBPort,pointer(i));
          repeat
