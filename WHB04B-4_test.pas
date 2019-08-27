@@ -19,7 +19,9 @@ uses
   cthreads,
   {$ENDIF}{$ENDIF}
 
-  keyboard,
+  serial,
+
+  CRT,
 
   sysutils,
 
@@ -239,6 +241,170 @@ Var
   LoopCount,Thread_Id,TimeoutCount:Dword;
   i:Longint;
 
+   SerPortBaud                              : LongInt;
+   SerPort                                  : String;
+   SerialHandle                             : TSerialHandle;
+   ByteTime                                 : Double;
+
+{=+=-=+=-=+=-=+=-=+=-=+=-=+=-=+=-=+=-=+=-=+=-=+=-=+=-=+=-=+=-=+=-=+=-=+=-=+=-=}
+Function OpenSerialPort:TSerialHandle;
+Var
+   Flags        : TSerialFlags; { TSerialFlags = set Of (RtsCtsFlowControl); }
+Begin
+   SerialHandle := SerOpen(SerPort);
+   If SerialHandle>0 Then
+      Begin
+         Flags:= [ ]; // None
+         SerSetParams(SerialHandle,SerPortBaud,8,NoneParity,1,Flags);
+         SerSetDTR(SerialHandle,True); {Set DTR To a low}
+         {each Byte takes 10 bits,  Start, 8 Bits, 1 sTop}
+         ByteTime:=10/SerPortBaud;
+         {WriteLn(BytETIMe[SerPortNum]*1000000:1:3,'bps');}
+      End;
+   OpenSerialPort:=SerialHandle;
+End;
+{=+=-=+=-=+=-=+=-=+=-=+=-=+=-=+=-=+=-=+=-=+=-=+=-=+=-=+=-=+=-=+=-=+=-=+=-=+=-=}
+Procedure CloseSerialPort;
+Begin
+   If SerialHandle>0 Then
+      Begin
+         SerSync(SerialHandle); { flush out any remaining beFore closure }
+         SerFlushOutput(SerialHandle); { discard any remaining output }
+         SerClose(SerialHandle);
+      End;
+End;
+{=+=-=+=-=+=-=+=-=+=-=+=-=+=-=+=-=+=-=+=-=+=-=+=-=+=-=+=-=+=-=+=-=+=-=+=-=+=-=}
+Function smserread:char;
+var
+ inchar:char;
+Begin
+   inchar:=#0;
+   SerRead(SerialHandle, Inchar, 1);
+   smserread:=inchar;
+End;
+{=+=-=+=-=+=-=+=-=+=-=+=-=+=-=+=-=+=-=+=-=+=-=+=-=+=-=+=-=+=-=+=-=+=-=+=-=+=-=}
+Function SendSerial(SerialString:String):LongInt;
+Var
+   resendattempt,reopenattempt:Byte;
+   reopen:Tserialhandle;
+   Status:Longint;
+Begin
+   Status:=0;
+   If (SerialString<>'') Then
+      Begin
+         If (SerialString<>'?') AND
+            (SerialString<>'!') AND
+            (SerialString<>'~') AND
+            (SerialString<>#24 {Ctrl_X}) Then
+               SerialString:=SerialString+#10; {Linefeed}
+         If (Length(serialstring)>0) then
+            Begin
+               Repeat
+                  Resendattempt:=0;
+                  Repeat
+                     Begin
+                        Status := SerWrite(SerialHandle,SerialString[1],Length(SerialString));
+                        If Status <> Length(SerialString) Then
+                           Begin
+                              Sleep (10);
+                              Inc(Resendattempt);
+                           End;
+                     End;
+                  Until (Resendattempt>=25) or (Status = Length(SerialString));
+                  If Status <> Length(serialstring) Then
+                     Begin
+                     End;
+               until Status = Length(serialstring);
+            end;
+         {writeln ('status ',status);}
+         SendSerial:=Status;
+         End;
+End;
+{=+=-=+=-=+=-=+=-=+=-=+=-=+=-=+=-=+=-=+=-=+=-=+=-=+=-=+=-=+=-=+=-=+=-=+=-=+=-=}
+Procedure SimpleTerminal;
+const
+  NullLetter = #0;
+var
+  Inputchar, OutputLetter: Char;
+  InputString            : String;
+  newlinestarted         : Boolean;
+Begin
+   NewLineStarted:=False;
+   Textcolor(10);
+   Write('Termnal Port: '+SerPort+'     ');
+   Textcolor(14);
+   Write('X');
+   Textcolor(10);
+   Write(' to ');
+   Textcolor(11);
+   Write('e');
+   Textcolor(14);
+   Write('X');
+   Textcolor(11);
+   Writeln('it');
+   repeat
+      OutputLetter := NullLetter;
+      Outputletter:=smSerRead;
+      If Outputletter<>#0 then
+         Begin
+          If (Outputletter=#10) Or (Outputletter=#13) then
+             Begin
+               If Not(Newlinestarted) then
+                 Writeln;
+               newlinestarted:=True;
+             End
+          Else
+             Begin
+              newlinestarted:=false;
+              Textcolor(11);
+              Write(Outputletter);
+              //Textcolor(13);
+              //Write('#',Ord(Outputletter));
+             End;
+         End;
+      if Keypressed then
+         begin
+            inputstring:='';
+            repeat
+               if Keypressed then
+                  begin
+                      inputchar:=readkey;
+                      If inputchar=#8 then
+                        Begin
+                           If Length(inputstring)>1 then
+                              Inputstring:=copy(inputstring,1,length(inputstring)-1)
+                           else
+                              inputstring:='';
+                           Write(#13+inputstring+#32#13+Inputstring);
+                        End
+                  else
+                        Begin
+                           If (inputchar<>#24) and (inputchar<>#27) and (inputstring<>#13) and (inputstring<>#63) then
+                              Begin
+                                 inputstring:=inputstring+inputchar;
+                                 Textcolor(13);
+                                 Write(inputchar);
+                              End;
+                        End;
+                  End;
+            until (inputchar=#24) OR (inputchar=#27) OR (inputchar=#13) OR (inputchar=#63);
+            {Readln(Inputstring);  }
+            If inputchar=#13 Then
+               Begin
+                  Writeln;
+                  SendSerial(Inputstring);
+               End;
+            If inputchar=#63 Then
+               Begin
+                  Writeln;
+                  SendSerial('?');
+               End;
+         end;
+   Until (inputchar=#24) OR (inputchar=#27);
+   Textcolor(12);
+   Writeln('Terminal Exit');
+End;
+{=+=-=+=-=+=-=+=-=+=-=+=-=+=-=+=-=+=-=+=-=+=-=+=-=+=-=+=-=+=-=+=-=+=-=+=-=+=-=}
 Function TwosCompliment(InData,numberofbits:Byte):Integer;
    Var
       OutData:Integer;
@@ -426,16 +592,23 @@ Begin
 End;
 
 begin
-   keyboard.InitKeyboard();
    LCD_Data_Ready:=False;
    Writing_LCD_Data:=False;
    FeedW:=800;
    SpindleW:=24000;
+   SerPort:='COM5';
+   SerPortbaud:=250000;
+   If OpenSerialPort>0 Then
+   Begin
+      Writeln(SerPort,' Open @ ',SerPortbaud,'bps');
+      SimpleTerminal;
+   End;
+
    Writeln('Looking for WHB04B-4');
    Repeat
       Sleep(500);
       Write('.');
-      If libusbhid_detect_device($10CE, $EB93  {WHB04B-4 CNC Handwheel},{instance=}1,device_context) then
+      If libusbhid_detect_device($10CE, $EB93  {WHB04B-4 CNC Handwheel},{instance=}1) then
          Begin
             Writeln;
             Writeln('Found @ $10CE, $EB93');
@@ -443,5 +616,5 @@ begin
          End;
    Until Keypressed;
 
-   keyboard.DoneKeyboard();
+   CloseSerialPort;
 end.
