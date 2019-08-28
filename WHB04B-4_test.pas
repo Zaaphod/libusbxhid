@@ -134,7 +134,18 @@ begin
    Repeat
       //Write('.');
       hidReportData[reportIdx].dataLen:=libusbhid_interrupt_read(device_context,$81{endpoint},{out}hidReportData[reportIdx].hid_data,64{report length, varies by device}, {timeout=}50);
-      if hidReportData[reportIdx].datalen <= 0 then
+      if (hidReportData[reportIdx].datalen = -7) Then
+         Begin
+            //Timeout happened Data not read from device yet... maybe do something with this information.
+         End
+      Else
+      if (hidReportData[reportIdx].datalen < 0) then
+         Begin
+            //Writeln('Read Error: ',hidReportData[reportIdx].datalen);
+            terminate;
+         End
+      Else
+      if hidReportData[reportIdx].datalen = 0 then
          Begin
             Loopcount:=0;
             Inc(TimeoutCount);
