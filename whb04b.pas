@@ -218,7 +218,7 @@ Var
 Procedure Check_for_Device;
  Function Check_Wireless_Power:Boolean;
 Procedure Check_And_End_Thread;
- Function WHB04B_Present:Boolean;
+ Function WHB04B_Present:Byte;
 
 Implementation
 
@@ -484,10 +484,16 @@ Begin
 End;
 {=+=-=+=-=+=-=+=-=+=-=+=-=+=-=+=-=+=-=+=-=+=-=+=-=+=-=+=-=+=-=+=-=+=-=+=-=+=-=}
 Procedure Check_for_Device;
+Var
+   NumberOfDevices:Byte;
 Begin
    If Not(Thread_Running) And Not(Device_is_Open) Then
       Begin
-         If WHB04B_Present Then
+         NumberOfDevices:=WHB04B_Present;
+         If NumberOfDevices>1 Then
+            Writeln(NumberOfDevices,' Devices Found!  There Can Be Only One!')
+         Else
+         If NumberOfDevices=1 Then
             Begin
                If libusbhid_open_device($10CE, $EB93  {WHB04B-4 CNC Handwheel},{instance=}1,device_context,False) then
                   begin
@@ -544,7 +550,7 @@ Begin
       End;
 End;
 {=+=-=+=-=+=-=+=-=+=-=+=-=+=-=+=-=+=-=+=-=+=-=+=-=+=-=+=-=+=-=+=-=+=-=+=-=+=-=}
-Function WHB04B_Present:Boolean;
+Function WHB04B_Present:Byte;
 Begin
    WHB04B_Present:=libusbhid_detect_device($10CE, $EB93  {WHB04B-4 CNC Handwheel},{instance=}1);
 End;
@@ -560,6 +566,7 @@ Begin
    Z_WHB04B_Position:=0;
    A_WHB04B_Position:=0;
    Thread_Running:=False;
+   Device_Is_Open:=False;
    InitCriticalsection(criticalSection);
 End;
 
