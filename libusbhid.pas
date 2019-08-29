@@ -41,7 +41,7 @@ interface
 
 {$MACRO ON}
 
-{$define DEBUG_MSG} {enable/disable this define for debug messages on/off}
+//{$define DEBUG_MSG} {enable/disable this define for debug messages on/off}
 
 uses
 {$ifdef DEBUG_MSG}
@@ -88,7 +88,7 @@ but most importantly a device descriptor that can be checked for vid and pid of 
 function libusbhid_detect_device(vid,pid:word; instanceId:Tuint8):boolean;
 {<Initializes libusb library, uses libusbhid_get_index_of_device_from_list to check if a particualr device is attached, then exits the library. Does NOT actually open the device.}
 
-function  libusbhid_open_device(vid,pid:word; instanceId:Tuint8; out hid_device_context:libusbhid_context):boolean;
+function libusbhid_open_device(vid,pid:word; instanceId:Tuint8; out hid_device_context:libusbhid_context; Clear_Halt:Boolean):boolean;
 {<Opens a device instance given by the instance id (starts at 1) of a device with a given vid and pid. The instance id is necessary if multiple identical devices exist on the same system.}
 
 function  libusbhid_get_report(var hid_device_context:libusbhid_context; reportType:byte; reportNum:byte; reportLen:word; out report_data{:array of byte}; const timeout:dword=0):longint;
@@ -142,39 +142,50 @@ end;
 
 function libusbhid_interrupt_write(var hid_device_context:libusbhid_context; out_endpoint:byte; var data_into_device{array of byte}; const data_length:byte; const timeout:dword=0):longint;
 var
-  return_code:longint;
+  return_code,transfer_result:longint;
 begin
-  return_code:=libusb_interrupt_transfer(hid_device_context.usb_device_handle,out_endpoint,@data_into_device, data_length, @Result,timeout);
+  return_code:=libusb_interrupt_transfer(hid_device_context.usb_device_handle,out_endpoint,@data_into_device, data_length, @transfer_result,timeout);
 
   if return_code < LIBUSB_SUCCESS then
   begin
+    result:=return_code;
     if return_code<>LIBUSB_ERROR_TIMEOUT then WriteLn('interrupt write to usb device failed! return code: ',return_code)
 {$ifdef DEBUG_MSG}
-		else DBG_MSG(Format('%s libusbhid_interrupt_write. TIMEOUT bytes written: %d',[FormatDateTime(TIME_FORMAT,Now()),Result]))
+   else DBG_MSG(Format('%s libusbhid_interrupt_write. TIMEOUT bytes written: %d',[FormatDateTime(TIME_FORMAT,Now()),Result]))
 {$endif}
   end
+  else
+  begin
+    result:=transfer_result;
 {$ifdef DEBUG_MSG}
-  else DBG_MSG(Format('%s libusbhid_interrupt_write. sent: %d bytes to device ',[FormatDateTime(TIME_FORMAT,Now()),Result]));
+    DBG_MSG(Format('%s libusbhid_interrupt_write. sent: %d bytes to device ',[FormatDateTime(TIME_FORMAT,Now()),Result]));
 {$endif}
+  end;
 end;
 
 function libusbhid_interrupt_read(var hid_device_context:libusbhid_context; in_endpoint:byte; out data_from_device{array of byte}; const data_length:byte; const timeout:dword=0):longint;
 var
-  return_code:longint;
+  return_code,transfer_result:longint;
 begin
-  return_code:=libusb_interrupt_transfer(hid_device_context.usb_device_handle,in_endpoint,@data_from_device, data_length, @Result, timeout);
+  return_code:=libusb_interrupt_transfer(hid_device_context.usb_device_handle,in_endpoint,@data_from_device, data_length, @transfer_result, timeout);
 
   if return_code < LIBUSB_SUCCESS then
   begin
+    result:=return_code;
     if return_code<>LIBUSB_ERROR_TIMEOUT then WriteLn('libusbhid_interrupt_read. failed! return code: ',return_code)
 {$ifdef DEBUG_MSG}
-		else DBG_MSG(Format('%s libusbhid_interrupt_read. TIMEOUT bytes read: %d',[FormatDateTime(TIME_FORMAT,Now()),Result]))
+    else DBG_MSG(Format('%s libusbhid_interrupt_read. TIMEOUT bytes read: %d',[FormatDateTime(TIME_FORMAT,Now()),Result]))
 {$endif}
   end
+  else
+  begin
+    result:=transfer_result;
 {$ifdef DEBUG_MSG}
-  else DBG_MSG(Format('%s libusbhid_interrupt_read. received: %d bytes from device ',[FormatDateTime(TIME_FORMAT,Now()),Result]));
+    DBG_MSG(Format('%s libusbhid_interrupt_read. received: %d bytes from device ',[FormatDateTime(TIME_FORMAT,Now()),Result]));
 {$endif}
+  end;
 end;
+
 
 
 function  libusbhid_get_index_of_device_from_list(device_list:PPlibusb_device; vid,pid:word; instanceId:Tuint8):Tsint16;
@@ -265,7 +276,7 @@ begin
 end;
 
 
-function libusbhid_open_device(vid,pid:word; instanceId:Tuint8; out hid_device_context:libusbhid_context):boolean;
+function libusbhid_open_device(vid,pid:word; instanceId:Tuint8; out hid_device_context:libusbhid_context; Clear_Halt:Boolean):boolean;
 var
   devIdx: longint;
   usb_device_list:PPlibusb_device;
@@ -329,38 +340,41 @@ begin
 
       if usb_device_handle<>nil then
       begin
-{kernel driver attaching problem; device may open but still be busy - this attempts to go around that -
-I have never been able to fully test so - beware}
+        if clear_halt then
+        Begin
+          {kernel driver attaching problem; device may open but still be busy - this attempts to go around that -
+           I have never been able to fully test so - beware}
 {$ifdef DEBUG_MSG}DBG_MSG('device attempting go clear halt on ep $81');{whatever.. seems to fail everytime anyway}       {$endif}
 
-        res:=libusb_clear_halt(usb_device_handle, $81);
+          res:=libusb_clear_halt(usb_device_handle, $81);
 
 {$ifdef DEBUG_MSG}
-        if res=LIBUSB_SUCCESS then DBG_MSG('clear halt successful')
-        else DBG_MSG(Format('clear halt failed (it''s ok, endpoint was NOT busy); error result: %d',[res]));//I've never seen this succeeding :(; eh whatever
+          if res=LIBUSB_SUCCESS then DBG_MSG('clear halt successful')
+          else DBG_MSG(Format('clear halt failed (it''s ok, endpoint was NOT busy); error result: %d',[res]));//I've never seen this succeeding :(; eh whatever
 {$endif}
 
-(*        if libusb_auto_detach_kernel_driver(usb_device_handle,1{enable autodetach})=0 then DBG_MSG('Setting autodetach kernel driver')
-        else*)
-        begin
-//          DBG_MSG('Autodetach did not work. Checking if kernel driver is active...?');
-{device busy? try to detach kernel driver so I can claim the interface}
-          if (libusb_kernel_driver_active(usb_device_handle,0{interface number})=1) then
+(*          if libusb_auto_detach_kernel_driver(usb_device_handle,1{enable autodetach})=0 then DBG_MSG('Setting autodetach kernel driver')
+          else*)
           begin
+//            DBG_MSG('Autodetach did not work. Checking if kernel driver is active...?');
+{device busy? try to detach kernel driver so I can claim the interface}
+            if (libusb_kernel_driver_active(usb_device_handle,0{interface number})=1) then
+            begin
 
 {$ifdef DEBUG_MSG}DBG_MSG('device busy - driver active');        {$endif}
 
-             res:=libusb_detach_kernel_driver(usb_device_handle,0{interface number});
-             if res=LIBUSB_SUCCESS then
-             begin
-							usb_driver_detached:=true;
+               res:=libusb_detach_kernel_driver(usb_device_handle,0{interface number});
+               if res=LIBUSB_SUCCESS then
+               begin
+                 usb_driver_detached:=true;
 
 {$ifdef DEBUG_MSG}DBG_MSG ('driver detached');        {$endif}
-             end;
-          end
+               end;
+            end
 {$ifdef DEBUG_MSG}
-          else DBG_MSG('driver inactive - can claim interface');
+            else DBG_MSG('driver inactive - can claim interface');
 {$endif}
+          end;
         end;
 
 {$ifdef DEBUG_MSG}  DBG_MSG('getting configuration....');        {$endif}
