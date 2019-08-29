@@ -62,25 +62,32 @@ var
   hotplug_handle:libusb_hotplug_callback_handle;
 begin
   res:=libusb_init(nil);
+  Writeln('Testing With: $',Inttohex(vid,4),' $',Inttohex(pid,4),' ',res);
   if res < LIBUSB_SUCCESS then
   begin
 {$ifdef DEBUG_MSG}DBG_MSG('Cannot open libusb 1.0 library. You really need this..');{$endif}
   end
   else
   begin
-	  res:=libusb_hotplug_register_callback(nil, LIBUSB_HOTPLUG_EVENT_DEVICE_ARRIVED or LIBUSB_HOTPLUG_EVENT_DEVICE_LEFT, {LIBUSB_HOTPLUG_NO_FLAGS}LIBUSB_HOTPLUG_ENUMERATE, vid,pid,-1{=LIBUSB_HOTPLUG_MATCH_ANY}, @hotplug_callback_test, nil,@hotplug_handle);
-    if res=LIBUSB_SUCCESS then WriteLn('Callback registered');
+      Writeln('Libusb Initialized');
+          res:=libusb_hotplug_register_callback(nil, LIBUSB_HOTPLUG_EVENT_DEVICE_ARRIVED or LIBUSB_HOTPLUG_EVENT_DEVICE_LEFT, {LIBUSB_HOTPLUG_NO_FLAGS}LIBUSB_HOTPLUG_ENUMERATE,
+               vid,pid,-1{=LIBUSB_HOTPLUG_MATCH_ANY}, @hotplug_callback_test, nil,@hotplug_handle);
+      Writeln('register done, Result:',res);
+
+  if res=LIBUSB_SUCCESS then
+    Begin
+    WriteLn('Callback registered');
 
     while (count < 3)  do
     begin
     	libusb_handle_events_completed(nil, nil);
-      WriteLn('hotplug waiting....',count);
+        WriteLn('hotplug waiting....',count);
  			Sleep(1000);
-    end;
+      end;
 
-    libusb_hotplug_deregister_callback(nil, @hotplug_handle);
-    WriteLn('Callback de-registered');
-
+      libusb_hotplug_deregister_callback(nil, @hotplug_handle);
+      WriteLn('Callback de-registered');
+    End;
     {we're done, must exit libusb as well}
  		libusb_exit(nil);
 	end;
@@ -89,7 +96,7 @@ end;
 
 begin
 
-	libusbhid_device_hotplug_test($056a, $00de);
+	libusbhid_device_hotplug_test($10CE, $EB93);
 
 end.
 
