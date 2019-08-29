@@ -237,8 +237,5 @@ begin
    End;
    SimpleTerminal;  //Process_USB_Data in this procedure
    CloseSerialPort;
-   readThread.Terminate;
-   readThread.Free();
-   libusbhid_close_device(device_context);
-   DoneCriticalsection(criticalSection);
+
 end.

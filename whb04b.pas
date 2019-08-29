@@ -239,7 +239,7 @@ Var
    Button_Raw,
    xor_day : Byte;
    LoopCount,TimeoutCount:Dword;
-   Wheel_Relative_Movement,Wheel_Absolute_WHB04B_Position : Integer;
+   Wheel_Relative_Movement,Wheel_Absolute_WHB04B_Position,Interrupt_Read_ReturnCode : Integer;
 
 Function ReadThreadTwosCompliment(InData,numberofbits:Byte):Integer;
    Var
@@ -288,13 +288,13 @@ begin
    Axis_Sel := $0F;
    Wheel_Mode := $F0;
    Repeat
-      hidReportData[reportIdx].dataLen:=libusbhid_interrupt_read(device_context,$81{endpoint},{out}hidReportData[reportIdx].hid_data,64{report length, varies by device}, {timeout=}50);
-      if (hidReportData[reportIdx].datalen = -7) Then
+      Interrupt_Read_ReturnCode:=libusbhid_interrupt_read(device_context,$81{endpoint},{out}hidReportData[reportIdx].hid_data,64{report length, varies by device}, hidReportData[reportIdx].dataLen, {timeout=}50);
+      if (Interrupt_Read_ReturnCode = -7) Then
          Begin
             //Timeout happened Data not read from device yet... maybe do something with this information.
          End
       Else
-      if (hidReportData[reportIdx].datalen < 0) then
+      if (Interrupt_Read_ReturnCode < 0) then
          Begin
             EnterCriticalsection(criticalSection);
             Interrupt_Read_Thread_Result:=hidReportData[reportIdx].datalen;
@@ -303,7 +303,7 @@ begin
             terminate;
          End
       Else
-      if hidReportData[reportIdx].datalen = 0 then
+      if hidReportData[reportIdx].datalen <> 8 then
          Begin
             //Timeout probably
          End
@@ -381,9 +381,9 @@ Var
    WHB04_Packet1,
    WHB04_Packet2,
    WHB04_Packet3:Array [0..7] of byte;
- 
+
    X_WHB04B_Position_Abs,Y_WHB04B_Position_Abs,Z_WHB04B_Position_Abs,A_WHB04B_Position_Abs:Real;
- 
+
    Position_Changed:Boolean;
 
 Begin
@@ -491,6 +491,7 @@ Begin
             Begin
                If libusbhid_open_device($10CE, $EB93  {WHB04B-4 CNC Handwheel},{instance=}1,device_context,False) then
                   begin
+                     WriteLn('Device open');
                      Device_Is_Open:=True;
                   End
                else
@@ -500,19 +501,22 @@ Begin
 End;
 {=+=-=+=-=+=-=+=-=+=-=+=-=+=-=+=-=+=-=+=-=+=-=+=-=+=-=+=-=+=-=+=-=+=-=+=-=+=-=}
 Function Check_Wireless_Power:Boolean;
+Var
+   Interrupt_Read_Code:Integer;
 Begin
    Result:=False;
    If Not(Thread_Running) and Device_is_Open Then
       Begin
-         hidReportData[reportIdx].dataLen:=libusbhid_interrupt_read(device_context,$81{endpoint},{out}hidReportData[reportIdx].hid_data,64{report length, varies by device}, {timeout=}50);
-         If (hidReportData[reportIdx].dataLen>0) and ({Axis_Sel}hidReportData[reportIdx].hid_data[5]  <> Axis_Power_Off) AND ({Wheel Mode}hidReportData[reportIdx].hid_data[4] <> Wheel_Power_Off) then
+         Interrupt_Read_Code:=libusbhid_interrupt_read(device_context,$81{endpoint},{out}hidReportData[reportIdx].hid_data,64{report length, varies by device},hidReportData[reportIdx].dataLen, {timeout=}50);
+         Writeln(Interrupt_Read_Code,'  ',hidReportData[reportIdx].dataLen,'  ',hidReportData[reportIdx].hid_data[5],Axis_Power_Off,'  ',hidReportData[reportIdx].hid_data[4],Wheel_Power_Off);
+         If (Interrupt_Read_Code>=0) and ({Axis_Sel}hidReportData[reportIdx].hid_data[5]  <> Axis_Power_Off) AND ({Wheel Mode}hidReportData[reportIdx].hid_data[4] <> Wheel_Power_Off)   then
             Begin
                Start_Read_Thread;
                Result:=True
             End
          Else
             Begin
-               If (hidReportData[reportIdx].dataLen<>-7) Then  //Trasnsiever Unplugged for Wireless version
+               If (Interrupt_Read_Code<>-7) Then  //Trasnsiever Unplugged for Wireless version
                   Begin
                      libusbhid_close_device(device_context);
                      Device_Is_Open:=False;
@@ -557,6 +561,16 @@ Begin
    A_WHB04B_Position:=0;
    Thread_Running:=False;
    InitCriticalsection(criticalSection);
+End;
+
+Finalization
+Begin
+   If Thread_Running Then
+      readThread.Terminate;
+   readThread.Free();
+   If Device_Is_Open Then
+      libusbhid_close_device(device_context);
+   DoneCriticalsection(criticalSection);
 End;
 
 End.
