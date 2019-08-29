@@ -41,7 +41,7 @@ interface
 
 {$MACRO ON}
 
-//{$define DEBUG_MSG} {enable/disable this define for debug messages on/off}
+{$define DEBUG_MSG} {enable/disable this define for debug messages on/off}
 
 uses
 {$ifdef DEBUG_MSG}
@@ -154,7 +154,6 @@ begin
   end
   else DBG_MSG(Format('%s libusbhid_interrupt_write. sent: %d bytes to device ',[FormatDateTime(TIME_FORMAT,Now()),transferred_data_length]));
 {$endif}
-  end;
 end;
 
 function libusbhid_interrupt_read(var hid_device_context:libusbhid_context; in_endpoint:byte; out data_from_device{array of byte}; const max_data_length:byte; out transferred_data_length:longint; const timeout:dword=0):longint;
@@ -169,9 +168,7 @@ begin
   end
   else DBG_MSG(Format('%s libusbhid_interrupt_read. received: %d bytes from device ',[FormatDateTime(TIME_FORMAT,Now()),transferred_data_length]));
 {$endif}
-  end;
 end;
-
 
 
 function  libusbhid_get_index_of_device_from_list(device_list:PPlibusb_device; vid,pid:word; instanceId:Tuint8):Tsint16;
@@ -345,21 +342,21 @@ I have never been able to fully test so - beware}
         begin
 //          DBG_MSG('Autodetach did not work. Checking if kernel driver is active...?');
 {device busy? try to detach kernel driver so I can claim the interface}
-            if (libusb_kernel_driver_active(usb_device_handle,0{interface number})=1) then
-            begin
+          if (libusb_kernel_driver_active(usb_device_handle,0{interface number})=1) then
+          begin
 
 {$ifdef DEBUG_MSG}DBG_MSG('device busy - driver active');        {$endif}
 
-               res:=libusb_detach_kernel_driver(usb_device_handle,0{interface number});
-               if res=LIBUSB_SUCCESS then
-               begin
-                 usb_driver_detached:=true;
+             res:=libusb_detach_kernel_driver(usb_device_handle,0{interface number});
+             if res=LIBUSB_SUCCESS then
+             begin
+							usb_driver_detached:=true;
 
 {$ifdef DEBUG_MSG}DBG_MSG ('driver detached');        {$endif}
-               end;
-            end
+             end;
+          end
 {$ifdef DEBUG_MSG}
-            else DBG_MSG('driver inactive - can claim interface');
+          else DBG_MSG('driver inactive - can claim interface');
 {$endif}
 				end;
 

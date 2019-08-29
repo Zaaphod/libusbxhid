@@ -31,7 +31,7 @@ uses
 
 const
   REPORT_COUNT=16;
-  REPORT_LENGTH=64;
+  REPORT_LENGTH=128;
 
 type
 
