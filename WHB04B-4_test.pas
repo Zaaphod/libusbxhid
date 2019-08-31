@@ -229,8 +229,7 @@ Begin
 End;
 
 begin
-   
- LIBUSB_DEBUG_LEVEL=3;//
+   LIBUSB_DEBUG_LEVEL:=3;
    SerPort:='COM5';
    SerPortbaud:=250000;
    If OpenSerialPort>0 Then
