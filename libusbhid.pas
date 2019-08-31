@@ -78,7 +78,7 @@ type
   end;
 Var 
 
-LIBUSB_DEBUG_LEVEL=3;//
+LIBUSB_DEBUG_LEVEL:Integer=3;//
 
 function  libusbhid_get_index_of_device_from_list(device_list:PPlibusb_device; const vid,pid:word; const instance_number:byte; out instance_count:byte):longint;
 {<Loads all attached devices in a device list; libusb_device is an opaque record, cannot use its content, but each device gets one and can use it further to get a bus number and address of a device,
